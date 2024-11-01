@@ -141,58 +141,65 @@ def subsystem_flux_graph(
     eps_flux_conservation: float = 1e-3,
     masses: dict[str, float | None] | None = None,
 ) -> nx.DiGraph[str]:
-    ss_net = _subsystem_net_metabolites(model, fluxes, eps)
-    ss_net_rev = _subsystem_net_metabolites_rev(ss_net)
     if masses is None:
         masses = metabolite_mass_dict(model)
+    ss_net = _subsystem_net_metabolites(model, fluxes, eps)
+    ss_net_rev = _subsystem_net_metabolites_rev(ss_net)
+
     gs: nx.DiGraph[str] = nx.DiGraph()
     gs.add_nodes_from(ss_net.keys())  # type: ignore
-    count = 0
-    for s1, s2 in combinations(ss_net, 2):
-        s1_to_s2 = 0.0
-        s2_to_s1 = 0.0
-        for m, sv in ss_net_rev.items():
-            sv_mass = masses[m]
 
-            if sv_mass is None:
-                count += 1
-                print(count, m)
-                masses[m] = 0
-                sv_mass = 0
+    weights: dict[tuple[str, str], float] = {}
+    for met, ss_flux in ss_net_rev.items():
+        net_metabolite_production = sum(ss_flux.values())
+        assert abs(net_metabolite_production) < eps_flux_conservation
 
-            if (s1 not in sv) or (s2 not in sv):
-                continue
+        rate = sum(x for x in ss_flux.values() if x > 0)
 
-            # We will double check that the metabolite production is balanced,
-            # within numerical tolerance
-            tot = sum(x for x in sv.values() if x > 0)
-            try:
-                assert (
-                    tot - sum(-x for x in sv.values() if x < 0) < eps_flux_conservation
-                )
-            except AssertionError as e:
-                print(m, sv)
-                print(tot, sum(-x for x in sv.values() if x < 0))
-                raise e
+        if met in masses and masses[met] is not None:
+            mass = cast(float, masses[met])
+        else:
+            mass = 0.0
+            print(f"no mass for {met}; setting to zero")
 
-            if sv[s1] > 0 and sv[s2] < 0:
-                s1_to_s2 = -sv[s1] * sv[s2] / tot
-            elif sv[s1] < 0 and sv[s2] > 0:
-                s2_to_s1 = -sv[s1] * sv[s2] / tot
-        if abs(s1_to_s2) > eps:
-            gs.add_edge(s1, s2, weight=sv_mass * s1_to_s2)  # type: ignore
-        if abs(s2_to_s1) > eps:
-            gs.add_edge(s2, s1, weight=sv_mass * s2_to_s1)  # type: ignore
+        for (s1, f1), (s2, f2) in combinations(ss_flux.items(), 2):
+            # ensure that f1 > 0 > f2 so we can think of the metabolite as
+            # being produced in s1 and consumed in s2
+            if f1 > 0 > f2:
+                pass
+            elif f2 > 0 > f1:
+                f1, f2 = f2, f1
+                s1, s2 = s2, s1
+            else:
+                continue  # same sign flux, no edge
 
-    gs.add_node("External")  # type: ignore
+            w = -(f1 * f2) * mass / rate  # w is non-negative
+
+            # to make sure we only track net mass, we will need to eliminate two-cycles
+            if s1 > s2:
+                s1, s2 = s2, s1
+                w = -w
+
+            if (s1, s2) in weights:
+                weights[(s1, s2)] += w
+            else:
+                weights[(s1, s2)] = w
+
+    for (s1, s2), w in weights.items():
+        if w > 0:
+            gs.add_edge(s1, s2, weight=w)  # type: ignore
+        elif w < 0:
+            gs.add_edge(s2, s1, weight=-w)  # type: ignore
+
+    gs.add_node("⌀")  # type: ignore
     for u in gs.nodes():
-        if u == "External":
+        if u == "⌀":
             continue
         deficit = gs.out_degree(u, weight="weight") - gs.in_degree(u, weight="weight")  # type: ignore
         if deficit < 0:
-            gs.add_edge(u, "External", weight=-deficit)  # type: ignore
+            gs.add_edge(u, "⌀", weight=-deficit)  # type: ignore
         elif deficit > 0:
-            gs.add_edge("External", u, weight=deficit)  # type: ignore
+            gs.add_edge("⌀", u, weight=deficit)  # type: ignore
 
     return gs
 

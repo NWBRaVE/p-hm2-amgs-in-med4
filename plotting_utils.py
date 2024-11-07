@@ -180,27 +180,3 @@ def plot_impact_graph(
     ax2.set_ylim([-len(ylabs), 1])
     ax.grid(axis="both")
     ax.set_xlabel("FVA Ranges (normalized)")
-    if highlights:
-        ax.legend(
-            [
-                "Healthy Range",
-                "Healthy Midpoint",
-                "Infected Range",
-                "Infected Midpoint",
-                "AMG Target Range",
-                "AMG Target Midpoint",
-            ],
-            ncols=3,
-            loc="upper right",
-        )
-    else:
-        ax.legend(
-            [
-                "Healthy Range",
-                "Healthy Midpoint",
-                "Infected Range",
-                "Infected Midpoint",
-            ],
-            ncols=2,
-            loc="upper right",
-        )

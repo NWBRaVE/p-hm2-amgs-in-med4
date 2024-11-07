@@ -18,7 +18,7 @@ def draw_graph(
         gs_red,
         pos=pos,
         ax=ax,
-        alpha=0.5,
+        alpha=1.0,
         node_size=[
             50 * np.sqrt(np.abs(gs.in_degree(n, weight="weight") / scale))
             for n in gs_red.nodes
@@ -37,6 +37,11 @@ def draw_graph(
             lab = manual_relabels[label]
         else:
             lab = label
+
+        if label_rotation is None:
+            theta = np.arctan(y / x) * 180 / np.pi
+        else:
+            theta = label_rotation
         ax.text(
             x,
             y,
@@ -44,7 +49,7 @@ def draw_graph(
             fontsize=12,
             ha="center",
             va="center",
-            rotation=label_rotation,
+            rotation=theta,
         )
 
     nx.draw_networkx_edges(
@@ -55,13 +60,14 @@ def draw_graph(
             for _, _, d in gs_red.edges(data=True)
         ],
         alpha=[
-            min((np.abs(d["weight"] / scale) / 100) ** (1 / 4), 1)
+            min((np.abs(d["weight"] / scale) / 100) ** (1 / 4) + 0.2, 1)
             for _, _, d in gs_red.edges(data=True)
         ],
         connectionstyle="arc3, rad = 0.1",
         arrowsize=20,
         width=[
-            np.log(np.abs(d["weight"] / scale)) for _, _, d in gs_red.edges(data=True)
+            np.log(np.abs(d["weight"] / scale)) + 3
+            for _, _, d in gs_red.edges(data=True)
         ],
         ax=ax,
     )
@@ -180,27 +186,3 @@ def plot_impact_graph(
     ax2.set_ylim([-len(ylabs), 1])
     ax.grid(axis="both")
     ax.set_xlabel("FVA Ranges (normalized)")
-    if highlights:
-        ax.legend(
-            [
-                "Healthy Range",
-                "Healthy Midpoint",
-                "Infected Range",
-                "Infected Midpoint",
-                "AMG Target Range",
-                "AMG Target Midpoint",
-            ],
-            ncols=3,
-            loc="upper right",
-        )
-    else:
-        ax.legend(
-            [
-                "Healthy Range",
-                "Healthy Midpoint",
-                "Infected Range",
-                "Infected Midpoint",
-            ],
-            ncols=2,
-            loc="upper right",
-        )

@@ -7,6 +7,12 @@
     "R01063": "absolute decrease",
     "R01523": "absolute decrease",
     "R01827": "absolute increase",
+    "R01855": "raw increase",
+    "R02017": "raw increase",
+    "R02018": "raw decrease",
+    "R02019": "raw increase",
+    "R02024": "raw increase",
+    "R02100": "raw increase",
     "R05223": "raw increase",
     "R05817": "raw increase",
     "R05818": "raw increase"

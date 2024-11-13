@@ -11,4 +11,4 @@ This README will be updated with publication/preprint information when it become
 
 The baseline model is imported and modified (e.g., to incorporate phage biomass) in `generate_biomass_functions.ipynb`.
 
-The remaining notebooks produce tables and figures presented in the manuscript. The Python file contain various utility functions for the analysis.
+The remaining notebooks produce tables and figures presented in the manuscript. The Python files contain various utility functions for the analysis.

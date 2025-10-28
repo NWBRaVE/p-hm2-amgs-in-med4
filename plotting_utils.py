@@ -1,6 +1,7 @@
 # type: ignore
 import networkx as nx
 import numpy as np
+from matplotlib.patches import ArrowStyle
 
 
 def draw_graph(
@@ -24,7 +25,7 @@ def draw_graph(
             for n in gs_red.nodes
         ],
         node_color=[
-            "#aaaaff" if gs.in_degree(n, weight="weight") > 0 else "#ffaaaa"
+            "#ff6666" if gs.in_degree(n, weight="weight") > 0 else "#6666ff"
             for n in gs_red.nodes
         ],
     )
@@ -56,7 +57,7 @@ def draw_graph(
         gs_red,
         pos=pos,
         edge_color=[
-            "#aaaaff" if d["weight"] > 0 else "#ffaaaa"
+            "#ff6666" if d["weight"] > 0 else "#6666ff"
             for _, _, d in gs_red.edges(data=True)
         ],
         alpha=[
@@ -65,8 +66,14 @@ def draw_graph(
         ],
         connectionstyle="arc3, rad = 0.1",
         arrowsize=20,
+        arrowstyle=[
+            ArrowStyle("-|>", head_length=0.4, head_width=0.2)
+            if d["weight"] > 0
+            else ArrowStyle("-|>", head_length=0.0, head_width=0.3)
+            for _, _, d in gs_red.edges(data=True)
+        ],
         width=[
-            np.log(np.abs(d["weight"] / scale)) + 3
+            np.log(1 + np.abs(d["weight"] / scale))
             for _, _, d in gs_red.edges(data=True)
         ],
         ax=ax,

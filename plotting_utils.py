@@ -1,6 +1,8 @@
 # type: ignore
+import matplotlib.patheffects as pe
 import networkx as nx
 import numpy as np
+from matplotlib import pyplot as plt
 from matplotlib.patches import ArrowStyle
 
 
@@ -13,6 +15,11 @@ def draw_graph(
         [(u, v) for u, v, d in gs.edges(data=True) if np.abs(d["weight"] / scale) > cut]
     )
 
+    w_abs = [
+        np.sum(np.abs(gs.edges[(n, v)]["weight"]) for v in gs.successors(n))
+        for n in gs_red.nodes()
+    ]
+
     if pos is None:
         pos = nx.shell_layout(gs_red)
     nx.draw_networkx_nodes(
@@ -20,14 +27,21 @@ def draw_graph(
         pos=pos,
         ax=ax,
         alpha=1.0,
-        node_size=[
-            50 * np.sqrt(np.abs(gs.in_degree(n, weight="weight") / scale))
-            for n in gs_red.nodes
-        ],
+        # node_size=[
+        #     50 * np.sqrt(np.abs(gs.in_degree(n, weight="weight") / scale))
+        #     for n in gs_red.nodes
+        # ],
+        node_size=[max(50 * np.sqrt(w / scale), 500 / np.sqrt(scale)) for w in w_abs],
         node_color=[
-            "#ff6666" if gs.in_degree(n, weight="weight") > 0 else "#6666ff"
+            plt.cm.coolwarm(
+                gs.in_degree(n, weight="weight") / np.max(w_abs) * 0.5 + 0.5
+            )
             for n in gs_red.nodes
         ],
+        # node_color=[
+        #     "#ff6666" if gs.in_degree(n, weight="weight") > 0 else "#6666ff"
+        #     for n in gs_red.nodes
+        # ],
     )
 
     # draw node labels by hand becasue nx.draw_networkx_labels can't rotate labels
@@ -51,6 +65,7 @@ def draw_graph(
             ha="center",
             va="center",
             rotation=theta,
+            path_effects=[pe.withStroke(linewidth=3, foreground="#ffffff", alpha=0.9)],
         )
 
     nx.draw_networkx_edges(
@@ -76,6 +91,7 @@ def draw_graph(
             np.log(1 + np.abs(d["weight"] / scale))
             for _, _, d in gs_red.edges(data=True)
         ],
+        min_target_margin=100 / np.sqrt(scale),
         ax=ax,
     )
     ax.set_frame_on(False)

@@ -137,71 +137,136 @@ def metabolite_mass_dict(model: cobra.Model) -> dict[str, float | None]:
 def subsystem_flux_graph(
     model: cobra.Model,
     fluxes: Mapping[str, float],
+    masses: dict[str, float | None],
     eps: float = 1e-6,
     eps_flux_conservation: float = 1e-3,
-    masses: dict[str, float | None] | None = None,
 ) -> nx.DiGraph[str]:
-    if masses is None:
-        masses = metabolite_mass_dict(model)
-    ss_net = _subsystem_net_metabolites(model, fluxes, eps)
-    ss_net_rev = _subsystem_net_metabolites_rev(ss_net)
-
     gs: nx.DiGraph[str] = nx.DiGraph()
-    gs.add_nodes_from(ss_net.keys())  # type: ignore
 
-    weights: dict[tuple[str, str], float] = {}
-    for met, ss_flux in ss_net_rev.items():
-        net_metabolite_production = sum(ss_flux.values())
-        assert abs(net_metabolite_production) < eps_flux_conservation
+    subsystems = set(rxn.subsystem for rxn in cast(Rxns, model.reactions))
+    gs.add_nodes_from(subsystems)  # type: ignore
 
-        rate = sum(x for x in ss_flux.values() if x > 0)
+    met_ss: dict[str, dict[str, float]] = {}
+    for rxn_id, flux in fluxes.items():
+        rxn = cast(Reaction, model.reactions.get_by_id(rxn_id))
+        if abs(flux) <= eps:
+            continue
 
-        if met in masses and masses[met] is not None:
-            mass = cast(float, masses[met])
+        for met, stoic in rxn.metabolites.items():
+            if met.id not in met_ss:
+                met_ss[met.id] = {}
+            if rxn.subsystem not in met_ss[met.id]:
+                met_ss[met.id][rxn.subsystem] = flux * stoic
+            else:
+                met_ss[met.id][rxn.subsystem] += flux * stoic
+
+    for met_id, ss_dict in met_ss.items():
+        us = [ss for ss, flux in ss_dict.items() if flux > 0]
+        vs = [ss for ss, flux in ss_dict.items() if flux < 0]
+        if met_id in masses:
+            mass = masses[met_id]
         else:
-            mass = 0.0
-            print(f"no mass for {met}; setting to zero")
-
-        for (s1, f1), (s2, f2) in combinations(ss_flux.items(), 2):
-            # ensure that f1 > 0 > f2 so we can think of the metabolite as
-            # being produced in s1 and consumed in s2
-            if f1 > 0 > f2:
-                pass
-            elif f2 > 0 > f1:
-                f1, f2 = f2, f1
-                s1, s2 = s2, s1
-            else:
-                continue  # same sign flux, no edge
-
-            w = -(f1 * f2) * mass / rate  # w is non-negative
-
-            # to make sure we only track net mass, we will need to eliminate two-cycles
-            if s1 > s2:
-                s1, s2 = s2, s1
-                w = -w
-
-            if (s1, s2) in weights:
-                weights[(s1, s2)] += w
-            else:
-                weights[(s1, s2)] = w
-
-    for (s1, s2), w in weights.items():
-        if w > 0:
-            gs.add_edge(s1, s2, weight=w)  # type: ignore
-        elif w < 0:
-            gs.add_edge(s2, s1, weight=-w)  # type: ignore
+            mass = 0
+            print(f"Missing mass for {met_id}")
+        if mass is None or mass == 0:
+            continue
+        assert abs(sum(flux for flux in ss_dict.values())) < eps_flux_conservation
+        rate = sum(flux for flux in ss_dict.values() if flux > 0)
+        if rate == 0:
+            continue
+        for u in us:
+            for v in vs:
+                w = -ss_dict[u] * ss_dict[v] * mass / rate
+                if gs.has_edge(u, v):
+                    gs.edges[(u, v)]["weight"] += w
+                else:
+                    gs.add_edge(u, v, weight=w)  # type: ignore
 
     gs.add_node("⌀")  # type: ignore
     for u in gs.nodes():
         if u == "⌀":
             continue
-        deficit = gs.out_degree(u, weight="weight") - gs.in_degree(u, weight="weight")  # type: ignore
+        od = cast(float, gs.out_degree(u, weight="weight"))
+        id = cast(float, gs.in_degree(u, weight="weight"))
+        assert od >= 0
+        assert id >= 0
+        deficit = od - id  # type: ignore
         if deficit < 0:
             gs.add_edge(u, "⌀", weight=-deficit)  # type: ignore
         elif deficit > 0:
             gs.add_edge("⌀", u, weight=deficit)  # type: ignore
 
     return gs
+
+
+# def subsystem_flux_graph(
+#     model: cobra.Model,
+#     fluxes: Mapping[str, float],
+#     eps: float = 1e-6,
+#     eps_flux_conservation: float = 1e-3,
+#     masses: dict[str, float | None] | None = None,
+# ) -> nx.DiGraph[str]:
+#     if masses is None:
+#         masses = metabolite_mass_dict(model)
+#     ss_net = _subsystem_net_metabolites(model, fluxes, eps)
+#     ss_net_rev = _subsystem_net_metabolites_rev(ss_net)
+
+#     gs: nx.DiGraph[str] = nx.DiGraph()
+#     gs.add_nodes_from(ss_net.keys())  # type: ignore
+
+#     weights: dict[tuple[str, str], float] = {}
+#     for met, ss_flux in ss_net_rev.items():
+#         net_metabolite_production = sum(ss_flux.values())
+#         assert abs(net_metabolite_production) < eps_flux_conservation
+
+#         rate = sum(x for x in ss_flux.values() if x > 0)
+
+#         if met in masses and masses[met] is not None:
+#             mass = cast(float, masses[met])
+#         else:
+#             mass = 0.0
+#             print(f"no mass for {met}; setting to zero")
+
+#         for (s1, f1), (s2, f2) in combinations(ss_flux.items(), 2):
+#             # ensure that f1 > 0 > f2 so we can think of the metabolite as
+#             # being produced in s1 and consumed in s2
+#             if f1 > 0 > f2:
+#                 pass
+#             elif f2 > 0 > f1:
+#                 f1, f2 = f2, f1
+#                 s1, s2 = s2, s1
+#             else:
+#                 continue  # same sign flux, no edge
+
+#             w = -(f1 * f2) * mass / rate  # w is non-negative
+
+#             # to make sure we only track net mass, we will need to eliminate two-cycles
+#             if s1 > s2:
+#                 s1, s2 = s2, s1
+#                 w = -w
+
+#             if (s1, s2) in weights:
+#                 weights[(s1, s2)] += w
+#             else:
+#                 weights[(s1, s2)] = w
+
+#     for (s1, s2), w in weights.items():
+#         if w > 0:
+#             gs.add_edge(s1, s2, weight=w)  # type: ignore
+#         elif w < 0:
+#             gs.add_edge(s2, s1, weight=-w)  # type: ignore
+
+#     gs.add_node("⌀")  # type: ignore
+#     for u in gs.nodes():
+#         if u == "⌀":
+#             continue
+#         deficit = gs.out_degree(u, weight="weight") - gs.in_degree(u, weight="weight")  # type: ignore
+#         if deficit < 0:
+#             gs.add_edge(u, "⌀", weight=-deficit)  # type: ignore
+#         elif deficit > 0:
+#             gs.add_edge("⌀", u, weight=deficit)  # type: ignore
+
+#     return gs
 
 
 def create_metabolome(model: cobra.Model) -> nx.DiGraph[str]:
